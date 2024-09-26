@@ -17,6 +17,7 @@ def execute_commands_on_device(device, username, password, commands):
             'host': device['hostname'],
             'username': username,
             'password': password,
+            'disable_host_key_checking': True,
         }
 
         # Connecting to the device
