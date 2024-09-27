@@ -1,61 +1,70 @@
-from netmiko import ConnectHandler
+Create a YAML file (hosts.yaml) with the list of IP addresses or hostnames.
+Create the Python script to read the YAML file, ping the addresses, and generate the report.
+--------------------------------
+
+hosts:
+  - 8.8.8.8
+  - 8.8.4.4
+  - example.com
+  - 192.168.1.1
+
+--------------------------------     
+
+import subprocess
 import yaml
-import getpass
+import platform
 
-def read_devices_from_yaml(file_path):
+def load_hosts_from_yaml(file_path):
+    """Load hosts from the YAML file."""
     with open(file_path, 'r') as file:
-        devices = yaml.safe_load(file)
-    return devices['devices']
+        data = yaml.safe_load(file)
+        return data.get('hosts', [])
 
-def execute_commands_on_device(device, username, password, commands):
+def ping_host(host):
+    """Ping a host based on the operating system."""
+    # Determine the correct ping command based on OS
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    command = ['ping', param, '1', host]
+    
     try:
-        # Set device connection details with keyboard-interactive and password authentication enabled
-        device_params = {
-            'device_type': device['device_type'],
-            'host': device['hostname'],
-            'username': username,
-            'password': password,
-            'fast_cli': False,              # Ensures reliable session handling
-            'banner_timeout': 20,           # Handle login prompt delays
-            'conn_timeout': 30,             # Timeout for connecting
-            'auth_timeout': 20,             # Handles longer authentication times
-            'allow_agent': False,           # Disables SSH agent usage
-            'use_keys': False,              # Ensures no SSH keys are used
-            'global_delay_factor': 2,       # Increases delay for command execution
-            'auth_strategy': 'keyboard-interactive', # Sets authentication to keyboard-interactive
-        }
-
-        print(f"Connecting to {device['hostname']}...")
-        connection = ConnectHandler(**device_params)
-
-        # Save all command outputs to a single file
-        with open(f"{device['hostname']}_output.txt", 'w') as file:
-            for command in commands:
-                output = connection.send_command(command)
-                file.write(f"Command: {command}\n")
-                file.write(output)
-                file.write("\n" + "="*50 + "\n")
-
-        print(f"Outputs from {device['hostname']} saved successfully.")
-        connection.disconnect()
-
+        # Ping the host and capture the output
+        output = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return output.returncode == 0  # Return True if ping is successful
     except Exception as e:
-        print(f"Failed to connect to {device['hostname']}: {str(e)}")
+        print(f"Error pinging {host}: {e}")
+        return False
+
+def generate_report(hosts):
+    """Generate a report of reachable and unreachable hosts."""
+    reachable = []
+    unreachable = []
+
+    for host in hosts:
+        if ping_host(host):
+            reachable.append(host)
+        else:
+            unreachable.append(host)
+
+    return reachable, unreachable
 
 def main():
-    yaml_file = 'devices.yaml'
-    devices = read_devices_from_yaml(yaml_file)
-    username = input("Enter your username: ")
-    password = getpass.getpass("Enter your password: ")
+    # Path to the YAML file
+    yaml_file = 'hosts.yaml'
 
-    commands = [
-        'show version',
-        'show ip interface brief',
-        'show running-config',
-    ]
+    # Load hosts from the YAML file
+    hosts = load_hosts_from_yaml(yaml_file)
 
-    for device in devices:
-        execute_commands_on_device(device, username, password, commands)
+    # Generate the report
+    reachable, unreachable = generate_report(hosts)
+
+    # Display the results
+    print("\nReachable Hosts:")
+    for host in reachable:
+        print(f" - {host}")
+
+    print("\nUnreachable Hosts:")
+    for host in unreachable:
+        print(f" - {host}")
 
 if __name__ == "__main__":
     main()
